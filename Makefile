@@ -1,9 +1,26 @@
-CC      = gcc
-AR      = ar
-CFLAGS  = -Wall -Wextra -Wconversion -Wsign-conversion -O0 -ggdb3 \
-          -fno-omit-frame-pointer -fno-optimize-sibling-calls \
-          -fasynchronous-unwind-tables -fPIC -Iinclude
-LDFLAGS = -pthread
+CC = gcc
+AR = ar
+
+BUILD_TYPE ?= debug
+
+WARN_FLAGS = -Wall -Wextra -Wconversion -Wsign-conversion
+
+ifeq ($(BUILD_TYPE), release)
+    OPT_FLAGS = -O2 -DNDEBUG
+    DEBUG_LDFLAGS =
+else ifeq ($(BUILD_TYPE), debug)
+    OPT_FLAGS = -O0 -ggdb3 \
+                -fno-omit-frame-pointer -fno-optimize-sibling-calls \
+                -fno-builtin \
+                -fasynchronous-unwind-tables \
+                -pg
+    DEBUG_LDFLAGS = -pg -rdynamic
+else
+    $(error Unknown BUILD_TYPE '$(BUILD_TYPE)' -- expected 'debug' or 'release')
+endif
+
+CFLAGS  = $(WARN_FLAGS) $(OPT_FLAGS) -fPIC -Iinclude
+LDFLAGS = $(DEBUG_LDFLAGS)
 
 LIB_NAME = ds
 
