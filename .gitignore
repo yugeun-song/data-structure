@@ -19,12 +19,15 @@ cmake_install.cmake
 *.dll
 *.pdb
 
-# GDB / pwndbg artifacts
+# GDB / LLDB / pwndbg / GEF artifacts
 core
 core.*
 gdb.txt
 .gdb_history
+.lldb_history
 peda-session-*.txt
+.pwndbg_history
+.gef-history
 
 # Valgrind artifacts
 vgcore.*
@@ -32,6 +35,10 @@ callgrind.out.*
 cachegrind.out.*
 massif.out.*
 helgrind.out.*
+drd.out.*
+valgrind.log
+valgrind*.log
+valgrind*.xml
 
 # strace, ltrace, uftrace artifacts
 strace.out
@@ -48,6 +55,25 @@ trace-events-all
 
 # Profiling artifacts
 gmon.out
+perf.data
+perf.data.old
+
+# Coverage artifacts
+*.gcda
+*.gcno
+*.profraw
+*.profdata
+
+# Sanitizer logs
+asan.log.*
+ubsan.log.*
+tsan.log.*
+msan.log.*
+
+# Split DWARF / separate debug info
+*.dwo
+*.dwp
+*.debug
 
 # Clangd / LSP / Editor artifacts
 compile_commands.json
