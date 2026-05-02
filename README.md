@@ -61,7 +61,20 @@ make BUILD_TYPE=release             # release build (gcc)
 make CC=clang                       # debug build (clang)
 make CC=clang BUILD_TYPE=release    # release build (clang)
 make tests                          # build test programs
-make clean
+make clean                          # remove bin/ (make build outputs)
+make distclean                      # also remove every generated artifact:
+                                    #   cmake build/, out/, clangd .cache/
+                                    #   gmon.out, perf.data
+                                    #   valgrind: callgrind/cachegrind/massif/
+                                    #     helgrind/drd outputs, valgrind*.log/.xml
+                                    #   *.gcda/*.gcno (gcov), *.profraw/*.profdata
+                                    #     (clang coverage)
+                                    #   uftrace.data/, strace/ltrace logs
+                                    #   gdb/lldb history, peda/gef/pwndbg sessions
+                                    #   core dumps (core, core.*, vgcore.*)
+                                    #   asan/ubsan/tsan/msan logs
+                                    #   split DWARF (*.dwo, *.dwp, *.debug)
+                                    #   qemu.log, trace-events-all
 ```
 
 ### CMake
@@ -74,6 +87,7 @@ cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Release                       # relea
 cmake -B build -G Ninja -DCMAKE_C_COMPILER=clang                         # debug, clang
 cmake -B build -G Ninja -DCMAKE_C_COMPILER=clang -DCMAKE_BUILD_TYPE=Release
 cmake --build build
+rm -rf build                                                             # full cmake clean
 ```
 
 A preset for WSL environments is provided:
@@ -120,10 +134,11 @@ tools without further recompilation:
 
 | Tool       | Hook used                                                           |
 |------------|---------------------------------------------------------------------|
-| gdb        | `-O0`, `-ggdb3`, frame pointers                                     |
+| gdb / lldb | `-O0`, `-ggdb3`, frame pointers                                     |
 | perf       | `-ggdb3`, frame pointers, `-fasynchronous-unwind-tables`            |
 | gprof      | `-pg` (mcount instrumentation, generates gmon.out at exit)          |
 | uftrace    | `-pg` (mcount-based runtime tracing)                                |
+| valgrind   | `-O0`, `-ggdb3`, frame pointers (memcheck / callgrind / massif etc.)|
 | ltrace     | `-fno-builtin` keeps libc calls observable as actual call sites     |
 | strace     | none required (operates at syscall level)                           |
 | backtrace  | `-rdynamic` exports symbols for dl_iterate_phdr / glibc backtrace   |
