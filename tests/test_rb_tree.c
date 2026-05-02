@@ -1,15 +1,47 @@
-#include <limits.h>
+#include <inttypes.h>
+#include <stdint.h>
 #include "test.h"
 #include "rb_tree.h"
 
-static int insert_key(struct rb_tree *t, int key)
+struct test_rec {
+    uint64_t       id;
+    struct rb_node node;
+};
+
+static int test_rec_cmp(const struct rb_node *a, const struct rb_node *b)
 {
-    static int dummy_value = 0;
-    return rb_tree_insert(t, key, &dummy_value, sizeof(dummy_value));
+    const struct test_rec *ra = container_of(a, struct test_rec, node);
+    const struct test_rec *rb = container_of(b, struct test_rec, node);
+
+    if (ra->id < rb->id) {
+        return -1;
+    }
+    if (ra->id > rb->id) {
+        return 1;
+    }
+    return 0;
 }
 
-static int rb_test_check_subtree(struct rb_node *node, struct rb_node *nil,
-                                 int min_excl, int max_excl, int *out_black_height)
+static uint64_t test_rec_id(const struct rb_node *n)
+{
+    return container_of(n, struct test_rec, node)->id;
+}
+
+static void insert_id(struct rb_tree *tree, struct test_rec *rec, uint64_t id)
+{
+    rec->id = id;
+    rb_tree_insert(tree, &rec->node, test_rec_cmp);
+}
+
+static struct rb_node *find_id(struct rb_tree *tree, uint64_t id)
+{
+    struct test_rec probe = { .id = id, };
+    return rb_tree_search(tree, &probe.node, test_rec_cmp);
+}
+
+static int rb_test_check_subtree(const struct rb_node *node, const struct rb_node *nil,
+                                 uint64_t low_excl, uint64_t high_excl,
+                                 int *out_black_height)
 {
     if (node == nil) {
         *out_black_height = 1;
@@ -17,34 +49,37 @@ static int rb_test_check_subtree(struct rb_node *node, struct rb_node *nil,
     }
 
     int errors = 0;
+    uint64_t key = test_rec_id(node);
 
-    if (node->key <= min_excl || node->key >= max_excl) {
-        printf("  invariant: BST order violated at key=%d\n", node->key);
+    if (key <= low_excl || key >= high_excl) {
+        printf("  invariant: BST order violated at key=%" PRIu64 "\n", key);
         errors++;
     }
 
     if (node->color == RB_RED) {
         if (node->l_child != nil && node->l_child->color == RB_RED) {
-            printf("  invariant: red %d has red left child %d\n",
-                   node->key, node->l_child->key);
+            uint64_t lkey = test_rec_id(node->l_child);
+            printf("  invariant: red %" PRIu64 " has red left child %" PRIu64 "\n",
+                   key, lkey);
             errors++;
         }
 
         if (node->r_child != nil && node->r_child->color == RB_RED) {
-            printf("  invariant: red %d has red right child %d\n",
-                   node->key, node->r_child->key);
+            uint64_t rkey = test_rec_id(node->r_child);
+            printf("  invariant: red %" PRIu64 " has red right child %" PRIu64 "\n",
+                   key, rkey);
             errors++;
         }
     }
 
     int lh = 0;
     int rh = 0;
-    errors += rb_test_check_subtree(node->l_child, nil, min_excl, node->key, &lh);
-    errors += rb_test_check_subtree(node->r_child, nil, node->key, max_excl, &rh);
+    errors += rb_test_check_subtree(node->l_child, nil, low_excl, key, &lh);
+    errors += rb_test_check_subtree(node->r_child, nil, key, high_excl, &rh);
 
     if (lh != rh) {
-        printf("  invariant: black-height mismatch at key=%d (left=%d, right=%d)\n",
-               node->key, lh, rh);
+        printf("  invariant: black-height mismatch at key=%" PRIu64
+               " (left=%d, right=%d)\n", key, lh, rh);
         errors++;
     }
 
@@ -53,19 +88,24 @@ static int rb_test_check_subtree(struct rb_node *node, struct rb_node *nil,
     return errors;
 }
 
-static int rb_test_validate(struct rb_tree *tree)
+static int rb_test_validate(const struct rb_tree *tree)
 {
-    if (tree == NULL || tree->nil == NULL) {
-        printf("  invariant: tree not initialized (nil is NULL)\n");
+    if (tree == NULL) {
+        printf("  invariant: tree is NULL\n");
         return 0;
     }
 
-    if (tree->nil->color != RB_BLACK) {
-        printf("  invariant: sentinel (nil) is not black\n");
+    if (tree->nil.color != RB_BLACK) {
+        printf("  invariant: sentinel not black (init may not have set it up)\n");
         return 0;
     }
 
-    if (tree->root == tree->nil) {
+    if (tree->root == NULL) {
+        printf("  invariant: root is NULL (init may not have set it up)\n");
+        return 0;
+    }
+
+    if (tree->root == &tree->nil) {
         return 1;
     }
 
@@ -75,7 +115,8 @@ static int rb_test_validate(struct rb_tree *tree)
     }
 
     int black_height = 0;
-    int errors = rb_test_check_subtree(tree->root, tree->nil, INT_MIN, INT_MAX, &black_height);
+    int errors = rb_test_check_subtree(tree->root, &tree->nil, 0, UINT64_MAX,
+                                       &black_height);
     return errors == 0;
 }
 
@@ -91,25 +132,16 @@ static void test_validate_empty_tree(void)
     struct rb_tree tree = { 0, };
     rb_tree_init(&tree);
 
-    TEST_ASSERT(rb_tree_validate(&tree));
+    TEST_ASSERT(rb_tree_validate(&tree, test_rec_cmp));
     TEST_ASSERT(rb_test_validate(&tree));
 }
 
-static void test_search_by_key_on_empty(void)
+static void test_search_on_empty(void)
 {
     struct rb_tree tree = { 0, };
     rb_tree_init(&tree);
 
-    TEST_ASSERT_NULL(rb_tree_search_by_key(&tree, 42));
-}
-
-static void test_search_by_value_on_empty(void)
-{
-    struct rb_tree tree = { 0, };
-    rb_tree_init(&tree);
-
-    int needle = 0;
-    TEST_ASSERT_NULL(rb_tree_search_by_value(&tree, &needle, sizeof(needle)));
+    TEST_ASSERT_NULL(find_id(&tree, 42));
 }
 
 static void test_delete_on_empty_keeps_validity(void)
@@ -117,7 +149,8 @@ static void test_delete_on_empty_keeps_validity(void)
     struct rb_tree tree = { 0, };
     rb_tree_init(&tree);
 
-    rb_tree_delete(&tree, 42);
+    struct test_rec stub = { .id = 42, };
+    rb_tree_delete(&tree, &stub.node);
 
     TEST_ASSERT(rb_test_validate(&tree));
 }
@@ -127,9 +160,11 @@ static void test_insert_single(void)
     struct rb_tree tree = { 0, };
     rb_tree_init(&tree);
 
-    TEST_ASSERT_EQ(insert_key(&tree, 1), 0);
+    struct test_rec rec;
+    insert_id(&tree, &rec, 1);
+
     TEST_ASSERT(rb_test_validate(&tree));
-    TEST_ASSERT_NOT_NULL(rb_tree_search_by_key(&tree, 1));
+    TEST_ASSERT_NOT_NULL(find_id(&tree, 1));
 }
 
 static void test_insert_two_ascending(void)
@@ -137,12 +172,13 @@ static void test_insert_two_ascending(void)
     struct rb_tree tree = { 0, };
     rb_tree_init(&tree);
 
-    insert_key(&tree, 1);
-    insert_key(&tree, 2);
+    struct test_rec r1, r2;
+    insert_id(&tree, &r1, 1);
+    insert_id(&tree, &r2, 2);
 
     TEST_ASSERT(rb_test_validate(&tree));
-    TEST_ASSERT_NOT_NULL(rb_tree_search_by_key(&tree, 1));
-    TEST_ASSERT_NOT_NULL(rb_tree_search_by_key(&tree, 2));
+    TEST_ASSERT_NOT_NULL(find_id(&tree, 1));
+    TEST_ASSERT_NOT_NULL(find_id(&tree, 2));
 }
 
 static void test_insert_two_descending(void)
@@ -150,12 +186,13 @@ static void test_insert_two_descending(void)
     struct rb_tree tree = { 0, };
     rb_tree_init(&tree);
 
-    insert_key(&tree, 2);
-    insert_key(&tree, 1);
+    struct test_rec r1, r2;
+    insert_id(&tree, &r1, 2);
+    insert_id(&tree, &r2, 1);
 
     TEST_ASSERT(rb_test_validate(&tree));
-    TEST_ASSERT_NOT_NULL(rb_tree_search_by_key(&tree, 1));
-    TEST_ASSERT_NOT_NULL(rb_tree_search_by_key(&tree, 2));
+    TEST_ASSERT_NOT_NULL(find_id(&tree, 1));
+    TEST_ASSERT_NOT_NULL(find_id(&tree, 2));
 }
 
 static void test_insert_three_balanced(void)
@@ -163,9 +200,10 @@ static void test_insert_three_balanced(void)
     struct rb_tree tree = { 0, };
     rb_tree_init(&tree);
 
-    insert_key(&tree, 2);
-    insert_key(&tree, 1);
-    insert_key(&tree, 3);
+    struct test_rec r1, r2, r3;
+    insert_id(&tree, &r1, 2);
+    insert_id(&tree, &r2, 1);
+    insert_id(&tree, &r3, 3);
 
     TEST_ASSERT(rb_test_validate(&tree));
 }
@@ -175,18 +213,18 @@ static void test_insert_uncle_red_recolor(void)
     struct rb_tree tree = { 0, };
     rb_tree_init(&tree);
 
-    insert_key(&tree, 10);
-    insert_key(&tree, 5);
-    insert_key(&tree, 15);
-    insert_key(&tree, 3);
+    static const uint64_t keys[] = { 10, 5, 15, 3, };
+    size_t n = sizeof(keys) / sizeof(keys[0]);
+    struct test_rec recs[4];
+
+    for (size_t i = 0; i < n; i++) {
+        insert_id(&tree, &recs[i], keys[i]);
+    }
 
     TEST_ASSERT(rb_test_validate(&tree));
 
-    static const int keys[] = { 10, 5, 15, 3, };
-    size_t n = sizeof(keys) / sizeof(keys[0]);
-
     for (size_t i = 0; i < n; i++) {
-        TEST_ASSERT_NOT_NULL(rb_tree_search_by_key(&tree, keys[i]));
+        TEST_ASSERT_NOT_NULL(find_id(&tree, keys[i]));
     }
 }
 
@@ -195,9 +233,10 @@ static void test_insert_zigzag_left_right(void)
     struct rb_tree tree = { 0, };
     rb_tree_init(&tree);
 
-    insert_key(&tree, 10);
-    insert_key(&tree, 5);
-    insert_key(&tree, 7);
+    struct test_rec r1, r2, r3;
+    insert_id(&tree, &r1, 10);
+    insert_id(&tree, &r2, 5);
+    insert_id(&tree, &r3, 7);
 
     TEST_ASSERT(rb_test_validate(&tree));
 }
@@ -207,9 +246,10 @@ static void test_insert_zigzag_right_left(void)
     struct rb_tree tree = { 0, };
     rb_tree_init(&tree);
 
-    insert_key(&tree, 5);
-    insert_key(&tree, 10);
-    insert_key(&tree, 7);
+    struct test_rec r1, r2, r3;
+    insert_id(&tree, &r1, 5);
+    insert_id(&tree, &r2, 10);
+    insert_id(&tree, &r3, 7);
 
     TEST_ASSERT(rb_test_validate(&tree));
 }
@@ -219,13 +259,14 @@ static void test_insert_sequential_ascending(void)
     struct rb_tree tree = { 0, };
     rb_tree_init(&tree);
 
-    for (int k = 1; k <= 50; k++) {
-        insert_key(&tree, k);
+    struct test_rec recs[50];
+    for (int k = 0; k < 50; k++) {
+        insert_id(&tree, &recs[k], (uint64_t)(k + 1));
         TEST_ASSERT(rb_test_validate(&tree));
     }
 
     for (int k = 1; k <= 50; k++) {
-        TEST_ASSERT_NOT_NULL(rb_tree_search_by_key(&tree, k));
+        TEST_ASSERT_NOT_NULL(find_id(&tree, (uint64_t)k));
     }
 }
 
@@ -234,13 +275,14 @@ static void test_insert_sequential_descending(void)
     struct rb_tree tree = { 0, };
     rb_tree_init(&tree);
 
-    for (int k = 50; k >= 1; k--) {
-        insert_key(&tree, k);
+    struct test_rec recs[50];
+    for (int k = 0; k < 50; k++) {
+        insert_id(&tree, &recs[k], (uint64_t)(50 - k));
         TEST_ASSERT(rb_test_validate(&tree));
     }
 
     for (int k = 1; k <= 50; k++) {
-        TEST_ASSERT_NOT_NULL(rb_tree_search_by_key(&tree, k));
+        TEST_ASSERT_NOT_NULL(find_id(&tree, (uint64_t)k));
     }
 }
 
@@ -249,11 +291,14 @@ static void test_insert_balanced_pattern(void)
     struct rb_tree tree = { 0, };
     rb_tree_init(&tree);
 
-    static const int keys[] = { 50, 30, 70, 20, 40, 60, 80, 10, 25, 35, 45, 55, 65, 75, 85, };
+    static const uint64_t keys[] = {
+        50, 30, 70, 20, 40, 60, 80, 10, 25, 35, 45, 55, 65, 75, 85,
+    };
     size_t n = sizeof(keys) / sizeof(keys[0]);
+    struct test_rec recs[15];
 
     for (size_t i = 0; i < n; i++) {
-        insert_key(&tree, keys[i]);
+        insert_id(&tree, &recs[i], keys[i]);
         TEST_ASSERT(rb_test_validate(&tree));
     }
 }
@@ -263,8 +308,9 @@ static void test_insert_duplicate_key_keeps_validity(void)
     struct rb_tree tree = { 0, };
     rb_tree_init(&tree);
 
-    insert_key(&tree, 5);
-    insert_key(&tree, 5);
+    struct test_rec r1, r2;
+    insert_id(&tree, &r1, 5);
+    insert_id(&tree, &r2, 5);
 
     TEST_ASSERT(rb_test_validate(&tree));
 }
@@ -274,13 +320,14 @@ static void test_search_missing_after_inserts(void)
     struct rb_tree tree = { 0, };
     rb_tree_init(&tree);
 
-    insert_key(&tree, 10);
-    insert_key(&tree, 20);
-    insert_key(&tree, 30);
+    struct test_rec r1, r2, r3;
+    insert_id(&tree, &r1, 10);
+    insert_id(&tree, &r2, 20);
+    insert_id(&tree, &r3, 30);
 
-    TEST_ASSERT_NULL(rb_tree_search_by_key(&tree, 999));
-    TEST_ASSERT_NULL(rb_tree_search_by_key(&tree, 0));
-    TEST_ASSERT_NULL(rb_tree_search_by_key(&tree, 15));
+    TEST_ASSERT_NULL(find_id(&tree, 999));
+    TEST_ASSERT_NULL(find_id(&tree, 0));
+    TEST_ASSERT_NULL(find_id(&tree, 15));
 }
 
 static void test_delete_only_node(void)
@@ -288,11 +335,12 @@ static void test_delete_only_node(void)
     struct rb_tree tree = { 0, };
     rb_tree_init(&tree);
 
-    insert_key(&tree, 1);
-    rb_tree_delete(&tree, 1);
+    struct test_rec rec;
+    insert_id(&tree, &rec, 1);
+    rb_tree_delete(&tree, &rec.node);
 
     TEST_ASSERT(rb_test_validate(&tree));
-    TEST_ASSERT_NULL(rb_tree_search_by_key(&tree, 1));
+    TEST_ASSERT_NULL(find_id(&tree, 1));
 }
 
 static void test_delete_then_reinsert(void)
@@ -300,12 +348,14 @@ static void test_delete_then_reinsert(void)
     struct rb_tree tree = { 0, };
     rb_tree_init(&tree);
 
-    insert_key(&tree, 1);
-    rb_tree_delete(&tree, 1);
-    TEST_ASSERT_NULL(rb_tree_search_by_key(&tree, 1));
+    struct test_rec rec1;
+    insert_id(&tree, &rec1, 1);
+    rb_tree_delete(&tree, &rec1.node);
+    TEST_ASSERT_NULL(find_id(&tree, 1));
 
-    insert_key(&tree, 1);
-    TEST_ASSERT_NOT_NULL(rb_tree_search_by_key(&tree, 1));
+    struct test_rec rec2;
+    insert_id(&tree, &rec2, 1);
+    TEST_ASSERT_NOT_NULL(find_id(&tree, 1));
     TEST_ASSERT(rb_test_validate(&tree));
 }
 
@@ -314,16 +364,17 @@ static void test_delete_root_with_two_children(void)
     struct rb_tree tree = { 0, };
     rb_tree_init(&tree);
 
-    insert_key(&tree, 50);
-    insert_key(&tree, 30);
-    insert_key(&tree, 70);
+    struct test_rec r1, r2, r3;
+    insert_id(&tree, &r1, 50);
+    insert_id(&tree, &r2, 30);
+    insert_id(&tree, &r3, 70);
 
-    rb_tree_delete(&tree, 50);
+    rb_tree_delete(&tree, &r1.node);
 
     TEST_ASSERT(rb_test_validate(&tree));
-    TEST_ASSERT_NULL(rb_tree_search_by_key(&tree, 50));
-    TEST_ASSERT_NOT_NULL(rb_tree_search_by_key(&tree, 30));
-    TEST_ASSERT_NOT_NULL(rb_tree_search_by_key(&tree, 70));
+    TEST_ASSERT_NULL(find_id(&tree, 50));
+    TEST_ASSERT_NOT_NULL(find_id(&tree, 30));
+    TEST_ASSERT_NOT_NULL(find_id(&tree, 70));
 }
 
 static void test_delete_all_inserted_in_order(void)
@@ -331,17 +382,18 @@ static void test_delete_all_inserted_in_order(void)
     struct rb_tree tree = { 0, };
     rb_tree_init(&tree);
 
-    for (int k = 1; k <= 30; k++) {
-        insert_key(&tree, k);
+    struct test_rec recs[30];
+    for (int k = 0; k < 30; k++) {
+        insert_id(&tree, &recs[k], (uint64_t)(k + 1));
     }
 
-    for (int k = 1; k <= 30; k++) {
-        rb_tree_delete(&tree, k);
+    for (int k = 0; k < 30; k++) {
+        rb_tree_delete(&tree, &recs[k].node);
         TEST_ASSERT(rb_test_validate(&tree));
     }
 
-    TEST_ASSERT_NULL(rb_tree_search_by_key(&tree, 1));
-    TEST_ASSERT_NULL(rb_tree_search_by_key(&tree, 30));
+    TEST_ASSERT_NULL(find_id(&tree, 1));
+    TEST_ASSERT_NULL(find_id(&tree, 30));
 }
 
 static void test_delete_all_inserted_reverse(void)
@@ -349,12 +401,13 @@ static void test_delete_all_inserted_reverse(void)
     struct rb_tree tree = { 0, };
     rb_tree_init(&tree);
 
-    for (int k = 1; k <= 30; k++) {
-        insert_key(&tree, k);
+    struct test_rec recs[30];
+    for (int k = 0; k < 30; k++) {
+        insert_id(&tree, &recs[k], (uint64_t)(k + 1));
     }
 
-    for (int k = 30; k >= 1; k--) {
-        rb_tree_delete(&tree, k);
+    for (int k = 29; k >= 0; k--) {
+        rb_tree_delete(&tree, &recs[k].node);
         TEST_ASSERT(rb_test_validate(&tree));
     }
 }
@@ -364,16 +417,21 @@ static void test_delete_in_pseudo_random_order(void)
     struct rb_tree tree = { 0, };
     rb_tree_init(&tree);
 
-    static const int keys[]  = { 50, 30, 70, 20, 40, 60, 80, 10, 25, 35, 45, 55, 65, 75, 85, };
-    static const int order[] = { 30, 70, 50, 40, 60, 20, 80, 10, 25, 35, 45, 55, 65, 75, 85, };
+    static const uint64_t keys[] = {
+        50, 30, 70, 20, 40, 60, 80, 10, 25, 35, 45, 55, 65, 75, 85,
+    };
+    static const int del_idx[] = {
+        1, 2, 0, 4, 5, 3, 6, 7, 8, 9, 10, 11, 12, 13, 14,
+    };
     size_t n = sizeof(keys) / sizeof(keys[0]);
+    struct test_rec recs[15];
 
     for (size_t i = 0; i < n; i++) {
-        insert_key(&tree, keys[i]);
+        insert_id(&tree, &recs[i], keys[i]);
     }
 
     for (size_t i = 0; i < n; i++) {
-        rb_tree_delete(&tree, order[i]);
+        rb_tree_delete(&tree, &recs[del_idx[i]].node);
         TEST_ASSERT(rb_test_validate(&tree));
     }
 }
@@ -383,11 +441,14 @@ static void test_delete_nonexistent_keeps_validity(void)
     struct rb_tree tree = { 0, };
     rb_tree_init(&tree);
 
-    insert_key(&tree, 5);
-    rb_tree_delete(&tree, 999);
+    struct test_rec rec;
+    insert_id(&tree, &rec, 5);
+
+    struct test_rec stub = { .id = 999, };
+    rb_tree_delete(&tree, &stub.node);
 
     TEST_ASSERT(rb_test_validate(&tree));
-    TEST_ASSERT_NOT_NULL(rb_tree_search_by_key(&tree, 5));
+    TEST_ASSERT_NOT_NULL(find_id(&tree, 5));
 }
 
 static void test_alternate_insert_delete_same_key(void)
@@ -396,13 +457,14 @@ static void test_alternate_insert_delete_same_key(void)
     rb_tree_init(&tree);
 
     for (int i = 0; i < 100; i++) {
-        insert_key(&tree, 42);
+        struct test_rec rec = { .id = 42, };
+        rb_tree_insert(&tree, &rec.node, test_rec_cmp);
         TEST_ASSERT(rb_test_validate(&tree));
-        TEST_ASSERT_NOT_NULL(rb_tree_search_by_key(&tree, 42));
+        TEST_ASSERT_NOT_NULL(find_id(&tree, 42));
 
-        rb_tree_delete(&tree, 42);
+        rb_tree_delete(&tree, &rec.node);
         TEST_ASSERT(rb_test_validate(&tree));
-        TEST_ASSERT_NULL(rb_tree_search_by_key(&tree, 42));
+        TEST_ASSERT_NULL(find_id(&tree, 42));
     }
 }
 
@@ -411,12 +473,13 @@ static void test_alternating_insert_delete_growing(void)
     struct rb_tree tree = { 0, };
     rb_tree_init(&tree);
 
-    for (int i = 1; i <= 50; i++) {
-        insert_key(&tree, i);
+    struct test_rec recs[50];
+    for (int i = 0; i < 50; i++) {
+        insert_id(&tree, &recs[i], (uint64_t)(i + 1));
         TEST_ASSERT(rb_test_validate(&tree));
 
-        if (i > 1) {
-            rb_tree_delete(&tree, i - 1);
+        if (i > 0) {
+            rb_tree_delete(&tree, &recs[i - 1].node);
             TEST_ASSERT(rb_test_validate(&tree));
         }
     }
@@ -427,24 +490,24 @@ static void test_stress_500_mixed_operations(void)
     struct rb_tree tree = { 0, };
     rb_tree_init(&tree);
 
-    for (int i = 1; i <= 500; i++) {
-        int hashed = i * 7919;
-        int k = hashed % 10000 + 1;
-        insert_key(&tree, k);
+    static struct test_rec recs[500];
+    for (int i = 0; i < 500; i++) {
+        int hashed = (i + 1) * 7919;
+        int wrapped = hashed % 10000 + 1;
+        insert_id(&tree, &recs[i], (uint64_t)wrapped);
     }
     TEST_ASSERT(rb_test_validate(&tree));
 
-    for (int i = 1; i <= 500; i += 2) {
-        int hashed = i * 7919;
-        int k = hashed % 10000 + 1;
-        rb_tree_delete(&tree, k);
+    for (int i = 0; i < 500; i += 2) {
+        rb_tree_delete(&tree, &recs[i].node);
     }
     TEST_ASSERT(rb_test_validate(&tree));
 
+    static struct test_rec extras[250];
     for (int i = 0; i < 250; i++) {
         int hashed = i * 6997;
-        int k = hashed % 10000 + 5000;
-        insert_key(&tree, k);
+        int wrapped = hashed % 10000 + 5000;
+        insert_id(&tree, &extras[i], (uint64_t)wrapped);
     }
     TEST_ASSERT(rb_test_validate(&tree));
 }
@@ -454,25 +517,25 @@ static void test_pathological_skewed_then_drain(void)
     struct rb_tree tree = { 0, };
     rb_tree_init(&tree);
 
-    for (int k = 1; k <= 100; k++) {
-        insert_key(&tree, k);
+    static struct test_rec recs[100];
+    for (int k = 0; k < 100; k++) {
+        insert_id(&tree, &recs[k], (uint64_t)(k + 1));
         TEST_ASSERT(rb_test_validate(&tree));
     }
 
-    for (int k = 1; k <= 100; k++) {
-        rb_tree_delete(&tree, k);
+    for (int k = 0; k < 100; k++) {
+        rb_tree_delete(&tree, &recs[k].node);
         TEST_ASSERT(rb_test_validate(&tree));
     }
 
-    TEST_ASSERT_NULL(rb_tree_search_by_key(&tree, 50));
+    TEST_ASSERT_NULL(find_id(&tree, 50));
 }
 
 int main(void)
 {
     TEST_RUN(test_init_returns_zero);
     TEST_RUN(test_validate_empty_tree);
-    TEST_RUN(test_search_by_key_on_empty);
-    TEST_RUN(test_search_by_value_on_empty);
+    TEST_RUN(test_search_on_empty);
     TEST_RUN(test_delete_on_empty_keeps_validity);
 
     TEST_RUN(test_insert_single);

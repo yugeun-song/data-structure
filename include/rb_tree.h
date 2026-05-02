@@ -16,21 +16,23 @@ struct rb_node {
     struct rb_node *l_child;
     struct rb_node *r_child;
     rb_color_t color;
-    int key;
-    char value[];
 };
 
 typedef struct rb_tree {
     struct rb_node *root;
-    struct rb_node *nil;
+    struct rb_node  nil;
 } rb_tree_t;
 
+#define container_of(ptr, type, member) \
+    ((type *)((char *)(ptr) - offsetof(type, member)))
+
+typedef int (*rb_cmp_fn)(const struct rb_node *a, const struct rb_node *b);
+
 int rb_tree_init(struct rb_tree *tree);
-int rb_tree_validate(const struct rb_tree *tree);
-int rb_tree_insert(struct rb_tree *tree, int key, const void *value, size_t value_size);
-int rb_tree_delete(struct rb_tree *tree, int key);
-struct rb_node *rb_tree_search_by_key(const struct rb_tree *tree, int key);
-struct rb_node *rb_tree_search_by_value(const struct rb_tree *tree, const void *value,
-                                        size_t value_size);
+int rb_tree_validate(const struct rb_tree *tree, rb_cmp_fn cmp);
+int rb_tree_insert(struct rb_tree *tree, struct rb_node *node, rb_cmp_fn cmp);
+int rb_tree_delete(struct rb_tree *tree, struct rb_node *node);
+struct rb_node *rb_tree_search(const struct rb_tree *tree, const struct rb_node *probe,
+                               rb_cmp_fn cmp);
 
 #endif
