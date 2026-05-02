@@ -9,35 +9,40 @@ static int insert_key(struct rb_tree *t, int key)
 }
 
 static int rb_test_check_subtree(struct rb_node *node, struct rb_node *nil,
-                                 int min_excl, int max_excl, int *errors)
+                                 int min_excl, int max_excl, int *out_black_height)
 {
     if (node == nil) {
-        return 1;
+        *out_black_height = 1;
+        return 0;
     }
+    int errors = 0;
     if (node->key <= min_excl || node->key >= max_excl) {
         printf("  invariant: BST order violated at key=%d\n", node->key);
-        (*errors)++;
+        errors++;
     }
     if (node->color == RB_RED) {
         if (node->l_child != nil && node->l_child->color == RB_RED) {
             printf("  invariant: red %d has red left child %d\n",
                    node->key, node->l_child->key);
-            (*errors)++;
+            errors++;
         }
         if (node->r_child != nil && node->r_child->color == RB_RED) {
             printf("  invariant: red %d has red right child %d\n",
                    node->key, node->r_child->key);
-            (*errors)++;
+            errors++;
         }
     }
-    int lh = rb_test_check_subtree(node->l_child, nil, min_excl, node->key, errors);
-    int rh = rb_test_check_subtree(node->r_child, nil, node->key, max_excl, errors);
+    int lh = 0;
+    int rh = 0;
+    errors += rb_test_check_subtree(node->l_child, nil, min_excl, node->key, &lh);
+    errors += rb_test_check_subtree(node->r_child, nil, node->key, max_excl, &rh);
     if (lh != rh) {
         printf("  invariant: black-height mismatch at key=%d (left=%d, right=%d)\n",
                node->key, lh, rh);
-        (*errors)++;
+        errors++;
     }
-    return lh + (node->color == RB_BLACK ? 1 : 0);
+    *out_black_height = lh + (node->color == RB_BLACK ? 1 : 0);
+    return errors;
 }
 
 static int rb_test_validate(struct rb_tree *tree)
@@ -57,8 +62,8 @@ static int rb_test_validate(struct rb_tree *tree)
         printf("  invariant: root is not black\n");
         return 0;
     }
-    int errors = 0;
-    rb_test_check_subtree(tree->root, tree->nil, INT_MIN, INT_MAX, &errors);
+    int black_height = 0;
+    int errors = rb_test_check_subtree(tree->root, tree->nil, INT_MIN, INT_MAX, &black_height);
     return errors == 0;
 }
 
