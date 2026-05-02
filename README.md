@@ -97,6 +97,28 @@ cmake --preset wsl-debug
 cmake --build out/build/wsl-debug
 ```
 
+### Editor Integration (clangd / LSP)
+
+`clangd` (used by Neovim, VS Code, and similar editors) reads
+`compile_commands.json` to resolve include paths and compile flags.
+CMake emits this file automatically; symlink it to the project root so
+editors find it from any source file:
+
+```sh
+make compile-db
+```
+
+This is equivalent to:
+
+```sh
+cmake -B build -G Ninja
+ln -sf build/compile_commands.json compile_commands.json
+```
+
+The symlink is gitignored. Re-run after adding sources or changing
+build flags. `make distclean` removes both the build directory and the
+symlink; regenerate with `make compile-db`.
+
 ### Compiler Flags
 
 Common to both modes:

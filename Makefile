@@ -39,7 +39,7 @@ STATIC_LIB = $(BIN_DIR)/lib$(LIB_NAME).a
 TEST_SRCS = $(wildcard $(TEST_DIR)/*.c)
 TEST_BINS = $(patsubst $(TEST_DIR)/%.c, $(BIN_DIR)/test/%, $(TEST_SRCS))
 
-.PHONY: all shared static tests clean distclean rebuild
+.PHONY: all shared static tests clean distclean rebuild compile-db
 
 all: shared static
 
@@ -85,3 +85,7 @@ distclean: clean
 	rm -f qemu.log trace-events-all
 
 rebuild: clean all
+
+compile-db:
+	cmake -B build -G Ninja
+	ln -sf build/compile_commands.json compile_commands.json
