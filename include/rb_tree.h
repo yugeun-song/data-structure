@@ -12,16 +12,19 @@ typedef enum {
     RB_BLACK = 1
 } rb_color_t;
 
-#define RB_VALUE_SIZE 256
-
 struct rb_node {
     struct rb_node *parent;
     struct rb_node *l_child;
     struct rb_node *r_child;
     rb_color_t      color;
     uint64_t        key;
-    char            value[RB_VALUE_SIZE];
 };
+
+#define RB_NODE_DEFINE(name, value_size) \
+    struct rb_node_##name {              \
+        struct rb_node node;             \
+        char           value[value_size];\
+    }
 
 typedef struct rb_tree {
     struct rb_node *root;

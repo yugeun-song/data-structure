@@ -217,65 +217,87 @@ compiles to `bin/test/<name>` and links against the static library.
 
 ## Usage
 
-`struct rb_node` carries a `uint64_t` key and a `RB_VALUE_SIZE`-byte
-(`256` by default) inline value buffer. The library orders nodes by
-key without a comparator callback. Users may also embed `struct
-rb_node` inside their own struct to attach additional metadata, and
-recover that outer struct via `container_of`.
+`struct rb_node` carries a `uint64_t` key and the link / color fields
+needed for tree traversal. Value storage is decided by the user, per
+case: each tree's node size is fixed at compile time, but different
+trees within the same build can have different sizes (slab-like).
 
-Direct buffer use (no wrapper struct needed):
+The user wraps `struct rb_node` inside their own struct, picking the
+inline value buffer size (or any other layout) that fits the case, and
+recovers the wrapper from a returned `struct rb_node *` via
+`container_of`. The library orders nodes by `node.key` directly; no
+comparator callback is required.
+
+Per-case node definitions via the convenience macro:
 
 ```c
-#include <string.h>
 #include "rb_tree.h"
 
-struct rb_tree tree = { 0, };
-rb_tree_init(&tree);
+RB_NODE_DEFINE(small,  32);
+RB_NODE_DEFINE(medium, 256);
+RB_NODE_DEFINE(large,  4096);
 
-struct rb_node n;
-n.key = 42;
-memcpy(n.value, payload, payload_size);   /* payload_size <= RB_VALUE_SIZE */
-rb_tree_insert(&tree, &n);
+/* generates:
+ *   struct rb_node_small  { struct rb_node node; char value[32];   };
+ *   struct rb_node_medium { struct rb_node node; char value[256];  };
+ *   struct rb_node_large  { struct rb_node node; char value[4096]; };
+ */
 
-struct rb_node *hit = rb_tree_search(&tree, 42);
-process(hit->value);
+struct rb_tree tree_s = { 0, };
+struct rb_tree tree_m = { 0, };
+rb_tree_init(&tree_s);
+rb_tree_init(&tree_m);
+
+struct rb_node_small *rs = malloc(sizeof(*rs));
+rs->node.key = 42;
+memcpy(rs->value, payload32, 32);
+rb_tree_insert(&tree_s, &rs->node);
+
+struct rb_node_medium *rm = malloc(sizeof(*rm));
+rm->node.key = 42;
+memcpy(rm->value, payload256, 256);
+rb_tree_insert(&tree_m, &rm->node);
+
+struct rb_node *hit_s = rb_tree_search(&tree_s, 42);
+struct rb_node_small *found_s = container_of(hit_s, struct rb_node_small, node);
+process(found_s->value);
 ```
 
-Wrapped with extra metadata (`container_of` pattern):
+Or define the wrapper struct directly when you want more than just a
+value buffer (extra metadata, different field names, multiple
+embedded `rb_node` members for membership in several trees, etc.):
 
 ```c
 struct my_record {
-    struct rb_node node;        /* includes the inline value buffer */
-    char          *external;    /* additional user metadata */
+    struct rb_node tree_link;
+    char           payload[128];
+    void          *external_handle;
     int            flags;
 };
 
 struct my_record *rec = malloc(sizeof(*rec));
-rec->node.key = 42;
-memcpy(rec->node.value, payload, payload_size);
-rec->external = handle;
-rec->flags    = MY_FLAG;
-rb_tree_insert(&tree, &rec->node);
+rec->tree_link.key = 42;
+memcpy(rec->payload, src, sizeof(rec->payload));
+rec->external_handle = handle;
+rb_tree_insert(&tree, &rec->tree_link);
 
 struct rb_node *hit = rb_tree_search(&tree, 42);
-struct my_record *found = container_of(hit, struct my_record, node);
-process(found->node.value);
-process(found->external);
+struct my_record *found = container_of(hit, struct my_record, tree_link);
 ```
 
 Key design points:
 
-- Key is `uint64_t`, stored directly in `struct rb_node`. The library
-  compares keys without indirection through a callback.
-- Value is a fixed-size byte buffer (`RB_VALUE_SIZE` = 256) embedded in
-  the node. Single allocation, cache-friendly. Override the size by
-  defining `RB_VALUE_SIZE` before including the header in a private
-  build.
-- For variable-shape user data beyond the inline buffer, embed
-  `struct rb_node` in a user struct and recover it with `container_of`
-  (defined in `rb_tree.h` via standard `offsetof`).
+- Key is `uint64_t`, stored directly in `struct rb_node`; comparison
+  is built in.
+- Value size is the user's choice per case, fixed at compile time.
+  Different cases (different wrapper structs) can coexist in the same
+  build — slab-like per-size pools.
+- One allocation per element since `rb_node` is embedded in the user
+  struct.
 - Multiple trees per element are possible by embedding multiple
-  `rb_node` members in the wrapper struct.
+  `rb_node` members in the wrapper struct, one per tree.
+- `container_of` is defined in `rb_tree.h` via standard `offsetof`;
+  no compiler extensions required.
 
 ## Consumption Modes
 
