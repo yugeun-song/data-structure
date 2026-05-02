@@ -212,53 +212,39 @@ compiles to `bin/test/<name>` and links against the static library.
 
 ## Usage
 
-Each data structure follows the Linux kernel intrusive pattern: the
-library node struct embeds only the link and color fields; the user
-embeds it inside their own data struct and recovers the outer struct
-via `container_of`. The library never sees the user's key or payload
-type.
+The library tracks a `uint64_t` key in `struct rb_node` directly and
+orders nodes by that key. Users embed `struct rb_node` inside their
+own struct and recover the outer struct via `container_of`. No
+comparator function is required, and no key extraction step is needed.
 
 ```c
 #include <stdint.h>
 #include "rb_tree.h"
 
 struct my_record {
-    uint64_t       id;
     struct rb_node node;
+    char *payload;
     /* arbitrary user fields */
 };
-
-static int my_cmp(const struct rb_node *a, const struct rb_node *b)
-{
-    const struct my_record *ra = container_of(a, struct my_record, node);
-    const struct my_record *rb = container_of(b, struct my_record, node);
-    if (ra->id < rb->id) {
-        return -1;
-    }
-    if (ra->id > rb->id) {
-        return 1;
-    }
-    return 0;
-}
 
 struct rb_tree tree = { 0, };
 rb_tree_init(&tree);
 
 struct my_record *rec = malloc(sizeof(*rec));
-rec->id = 42;
-rb_tree_insert(&tree, &rec->node, my_cmp);
+rec->node.key = 42;
+rb_tree_insert(&tree, &rec->node);
 
-struct my_record probe = { .id = 42, };
-struct rb_node *hit = rb_tree_search(&tree, &probe.node, my_cmp);
+struct rb_node *hit = rb_tree_search(&tree, 42);
 struct my_record *found = container_of(hit, struct my_record, node);
 ```
 
 Key design points:
 
-- Key type and payload type are the user's choice; the library stores
-  neither.
-- One allocation per element since the embedded `rb_node` lives inside
-  the user struct.
+- Key is `uint64_t`, stored directly in `struct rb_node`. The library
+  compares keys without indirection through a callback.
+- Payload type is the user's choice; the library never sees it.
+- One allocation per element since `rb_node` is embedded in the user
+  struct.
 - Multiple trees per element are possible by embedding multiple
   `rb_node` members.
 - `container_of` is defined in `rb_tree.h` using only standard

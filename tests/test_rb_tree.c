@@ -4,39 +4,13 @@
 #include "rb_tree.h"
 
 struct test_rec {
-    uint64_t       id;
     struct rb_node node;
 };
 
-static int test_rec_cmp(const struct rb_node *a, const struct rb_node *b)
-{
-    const struct test_rec *ra = container_of(a, struct test_rec, node);
-    const struct test_rec *rb = container_of(b, struct test_rec, node);
-
-    if (ra->id < rb->id) {
-        return -1;
-    }
-    if (ra->id > rb->id) {
-        return 1;
-    }
-    return 0;
-}
-
-static uint64_t test_rec_id(const struct rb_node *n)
-{
-    return container_of(n, struct test_rec, node)->id;
-}
-
 static void insert_id(struct rb_tree *tree, struct test_rec *rec, uint64_t id)
 {
-    rec->id = id;
-    rb_tree_insert(tree, &rec->node, test_rec_cmp);
-}
-
-static struct rb_node *find_id(struct rb_tree *tree, uint64_t id)
-{
-    struct test_rec probe = { .id = id, };
-    return rb_tree_search(tree, &probe.node, test_rec_cmp);
+    rec->node.key = id;
+    rb_tree_insert(tree, &rec->node);
 }
 
 static int rb_test_check_subtree(const struct rb_node *node, const struct rb_node *nil,
@@ -49,7 +23,7 @@ static int rb_test_check_subtree(const struct rb_node *node, const struct rb_nod
     }
 
     int errors = 0;
-    uint64_t key = test_rec_id(node);
+    uint64_t key = node->key;
 
     if (key <= low_excl || key >= high_excl) {
         printf("  invariant: BST order violated at key=%" PRIu64 "\n", key);
@@ -58,16 +32,14 @@ static int rb_test_check_subtree(const struct rb_node *node, const struct rb_nod
 
     if (node->color == RB_RED) {
         if (node->l_child != nil && node->l_child->color == RB_RED) {
-            uint64_t lkey = test_rec_id(node->l_child);
             printf("  invariant: red %" PRIu64 " has red left child %" PRIu64 "\n",
-                   key, lkey);
+                   key, node->l_child->key);
             errors++;
         }
 
         if (node->r_child != nil && node->r_child->color == RB_RED) {
-            uint64_t rkey = test_rec_id(node->r_child);
             printf("  invariant: red %" PRIu64 " has red right child %" PRIu64 "\n",
-                   key, rkey);
+                   key, node->r_child->key);
             errors++;
         }
     }
@@ -132,7 +104,7 @@ static void test_validate_empty_tree(void)
     struct rb_tree tree = { 0, };
     rb_tree_init(&tree);
 
-    TEST_ASSERT(rb_tree_validate(&tree, test_rec_cmp));
+    TEST_ASSERT(rb_tree_validate(&tree));
     TEST_ASSERT(rb_test_validate(&tree));
 }
 
@@ -141,7 +113,7 @@ static void test_search_on_empty(void)
     struct rb_tree tree = { 0, };
     rb_tree_init(&tree);
 
-    TEST_ASSERT_NULL(find_id(&tree, 42));
+    TEST_ASSERT_NULL(rb_tree_search(&tree, 42));
 }
 
 static void test_delete_on_empty_keeps_validity(void)
@@ -149,7 +121,8 @@ static void test_delete_on_empty_keeps_validity(void)
     struct rb_tree tree = { 0, };
     rb_tree_init(&tree);
 
-    struct test_rec stub = { .id = 42, };
+    struct test_rec stub;
+    stub.node.key = 42;
     rb_tree_delete(&tree, &stub.node);
 
     TEST_ASSERT(rb_test_validate(&tree));
@@ -164,7 +137,7 @@ static void test_insert_single(void)
     insert_id(&tree, &rec, 1);
 
     TEST_ASSERT(rb_test_validate(&tree));
-    TEST_ASSERT_NOT_NULL(find_id(&tree, 1));
+    TEST_ASSERT_NOT_NULL(rb_tree_search(&tree, 1));
 }
 
 static void test_insert_two_ascending(void)
@@ -177,8 +150,8 @@ static void test_insert_two_ascending(void)
     insert_id(&tree, &r2, 2);
 
     TEST_ASSERT(rb_test_validate(&tree));
-    TEST_ASSERT_NOT_NULL(find_id(&tree, 1));
-    TEST_ASSERT_NOT_NULL(find_id(&tree, 2));
+    TEST_ASSERT_NOT_NULL(rb_tree_search(&tree, 1));
+    TEST_ASSERT_NOT_NULL(rb_tree_search(&tree, 2));
 }
 
 static void test_insert_two_descending(void)
@@ -191,8 +164,8 @@ static void test_insert_two_descending(void)
     insert_id(&tree, &r2, 1);
 
     TEST_ASSERT(rb_test_validate(&tree));
-    TEST_ASSERT_NOT_NULL(find_id(&tree, 1));
-    TEST_ASSERT_NOT_NULL(find_id(&tree, 2));
+    TEST_ASSERT_NOT_NULL(rb_tree_search(&tree, 1));
+    TEST_ASSERT_NOT_NULL(rb_tree_search(&tree, 2));
 }
 
 static void test_insert_three_balanced(void)
@@ -224,7 +197,7 @@ static void test_insert_uncle_red_recolor(void)
     TEST_ASSERT(rb_test_validate(&tree));
 
     for (size_t i = 0; i < n; i++) {
-        TEST_ASSERT_NOT_NULL(find_id(&tree, keys[i]));
+        TEST_ASSERT_NOT_NULL(rb_tree_search(&tree, keys[i]));
     }
 }
 
@@ -266,7 +239,7 @@ static void test_insert_sequential_ascending(void)
     }
 
     for (int k = 1; k <= 50; k++) {
-        TEST_ASSERT_NOT_NULL(find_id(&tree, (uint64_t)k));
+        TEST_ASSERT_NOT_NULL(rb_tree_search(&tree, (uint64_t)k));
     }
 }
 
@@ -282,7 +255,7 @@ static void test_insert_sequential_descending(void)
     }
 
     for (int k = 1; k <= 50; k++) {
-        TEST_ASSERT_NOT_NULL(find_id(&tree, (uint64_t)k));
+        TEST_ASSERT_NOT_NULL(rb_tree_search(&tree, (uint64_t)k));
     }
 }
 
@@ -325,9 +298,9 @@ static void test_search_missing_after_inserts(void)
     insert_id(&tree, &r2, 20);
     insert_id(&tree, &r3, 30);
 
-    TEST_ASSERT_NULL(find_id(&tree, 999));
-    TEST_ASSERT_NULL(find_id(&tree, 0));
-    TEST_ASSERT_NULL(find_id(&tree, 15));
+    TEST_ASSERT_NULL(rb_tree_search(&tree, 999));
+    TEST_ASSERT_NULL(rb_tree_search(&tree, 0));
+    TEST_ASSERT_NULL(rb_tree_search(&tree, 15));
 }
 
 static void test_delete_only_node(void)
@@ -340,7 +313,7 @@ static void test_delete_only_node(void)
     rb_tree_delete(&tree, &rec.node);
 
     TEST_ASSERT(rb_test_validate(&tree));
-    TEST_ASSERT_NULL(find_id(&tree, 1));
+    TEST_ASSERT_NULL(rb_tree_search(&tree, 1));
 }
 
 static void test_delete_then_reinsert(void)
@@ -351,11 +324,11 @@ static void test_delete_then_reinsert(void)
     struct test_rec rec1;
     insert_id(&tree, &rec1, 1);
     rb_tree_delete(&tree, &rec1.node);
-    TEST_ASSERT_NULL(find_id(&tree, 1));
+    TEST_ASSERT_NULL(rb_tree_search(&tree, 1));
 
     struct test_rec rec2;
     insert_id(&tree, &rec2, 1);
-    TEST_ASSERT_NOT_NULL(find_id(&tree, 1));
+    TEST_ASSERT_NOT_NULL(rb_tree_search(&tree, 1));
     TEST_ASSERT(rb_test_validate(&tree));
 }
 
@@ -372,9 +345,9 @@ static void test_delete_root_with_two_children(void)
     rb_tree_delete(&tree, &r1.node);
 
     TEST_ASSERT(rb_test_validate(&tree));
-    TEST_ASSERT_NULL(find_id(&tree, 50));
-    TEST_ASSERT_NOT_NULL(find_id(&tree, 30));
-    TEST_ASSERT_NOT_NULL(find_id(&tree, 70));
+    TEST_ASSERT_NULL(rb_tree_search(&tree, 50));
+    TEST_ASSERT_NOT_NULL(rb_tree_search(&tree, 30));
+    TEST_ASSERT_NOT_NULL(rb_tree_search(&tree, 70));
 }
 
 static void test_delete_all_inserted_in_order(void)
@@ -392,8 +365,8 @@ static void test_delete_all_inserted_in_order(void)
         TEST_ASSERT(rb_test_validate(&tree));
     }
 
-    TEST_ASSERT_NULL(find_id(&tree, 1));
-    TEST_ASSERT_NULL(find_id(&tree, 30));
+    TEST_ASSERT_NULL(rb_tree_search(&tree, 1));
+    TEST_ASSERT_NULL(rb_tree_search(&tree, 30));
 }
 
 static void test_delete_all_inserted_reverse(void)
@@ -444,11 +417,12 @@ static void test_delete_nonexistent_keeps_validity(void)
     struct test_rec rec;
     insert_id(&tree, &rec, 5);
 
-    struct test_rec stub = { .id = 999, };
+    struct test_rec stub;
+    stub.node.key = 999;
     rb_tree_delete(&tree, &stub.node);
 
     TEST_ASSERT(rb_test_validate(&tree));
-    TEST_ASSERT_NOT_NULL(find_id(&tree, 5));
+    TEST_ASSERT_NOT_NULL(rb_tree_search(&tree, 5));
 }
 
 static void test_alternate_insert_delete_same_key(void)
@@ -457,14 +431,15 @@ static void test_alternate_insert_delete_same_key(void)
     rb_tree_init(&tree);
 
     for (int i = 0; i < 100; i++) {
-        struct test_rec rec = { .id = 42, };
-        rb_tree_insert(&tree, &rec.node, test_rec_cmp);
+        struct test_rec rec;
+        rec.node.key = 42;
+        rb_tree_insert(&tree, &rec.node);
         TEST_ASSERT(rb_test_validate(&tree));
-        TEST_ASSERT_NOT_NULL(find_id(&tree, 42));
+        TEST_ASSERT_NOT_NULL(rb_tree_search(&tree, 42));
 
         rb_tree_delete(&tree, &rec.node);
         TEST_ASSERT(rb_test_validate(&tree));
-        TEST_ASSERT_NULL(find_id(&tree, 42));
+        TEST_ASSERT_NULL(rb_tree_search(&tree, 42));
     }
 }
 
@@ -528,7 +503,7 @@ static void test_pathological_skewed_then_drain(void)
         TEST_ASSERT(rb_test_validate(&tree));
     }
 
-    TEST_ASSERT_NULL(find_id(&tree, 50));
+    TEST_ASSERT_NULL(rb_tree_search(&tree, 50));
 }
 
 int main(void)
