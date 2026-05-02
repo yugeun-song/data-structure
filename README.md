@@ -124,8 +124,13 @@ symlink; regenerate with `make compile-db`.
 Common to both modes:
 
 ```
+-std=c99 -pedantic
 -Wall -Wextra -Wconversion -Wsign-conversion -fPIC
 ```
+
+The C standard is pinned to ISO C99; GNU/POSIX extensions are disabled
+(`CMAKE_C_EXTENSIONS OFF` on the CMake side, `-std=c99 -pedantic` on
+the Make side). C11+ features are not used in this project.
 
 Debug-mode additions:
 

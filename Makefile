@@ -3,6 +3,7 @@ AR = ar
 
 BUILD_TYPE ?= debug
 
+STD_FLAGS  = -std=c99 -pedantic
 WARN_FLAGS = -Wall -Wextra -Wconversion -Wsign-conversion
 
 ifeq ($(BUILD_TYPE), release)
@@ -19,7 +20,7 @@ else
     $(error Unknown BUILD_TYPE '$(BUILD_TYPE)' -- expected 'debug' or 'release')
 endif
 
-CFLAGS  = $(WARN_FLAGS) $(OPT_FLAGS) -fPIC -Iinclude
+CFLAGS  = $(STD_FLAGS) $(WARN_FLAGS) $(OPT_FLAGS) -fPIC -Iinclude
 LDFLAGS = $(DEBUG_LDFLAGS)
 
 LIB_NAME = ds
