@@ -39,7 +39,7 @@ STATIC_LIB = $(BIN_DIR)/lib$(LIB_NAME).a
 TEST_SRCS = $(wildcard $(TEST_DIR)/*.c)
 TEST_BINS = $(patsubst $(TEST_DIR)/%.c, $(BIN_DIR)/test/%, $(TEST_SRCS))
 
-.PHONY: all shared static tests clean rebuild
+.PHONY: all shared static tests clean distclean rebuild
 
 all: shared static
 
@@ -67,5 +67,21 @@ $(BIN_DIR)/test/%: $(TEST_DIR)/%.c $(STATIC_LIB)
 
 clean:
 	rm -rf $(BIN_DIR)
+
+distclean: clean
+	rm -rf build out .cache
+	rm -f compile_commands.json
+	rm -f gmon.out perf.data perf.data.old
+	rm -f callgrind.out.* cachegrind.out.* massif.out.* helgrind.out.* drd.out.*
+	rm -f valgrind.log valgrind*.log valgrind*.xml
+	rm -f *.gcda *.gcno *.profraw *.profdata
+	rm -rf uftrace.data
+	rm -f strace.out strace.log *.strace ltrace.out ltrace.log *.ltrace
+	rm -f .gdb_history .lldb_history gdb.txt
+	rm -f peda-session-*.txt .gef-history .pwndbg_history
+	rm -f core core.* vgcore.*
+	rm -f asan.log.* ubsan.log.* tsan.log.* msan.log.*
+	rm -f *.dwo *.dwp *.debug
+	rm -f qemu.log trace-events-all
 
 rebuild: clean all
