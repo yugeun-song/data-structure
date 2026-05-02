@@ -289,6 +289,11 @@ Key design points:
 
 - Key is `uint64_t`, stored directly in `struct rb_node`; comparison
   is built in.
+- Layout is predictable across x86_64, ARM64, and RISC-V LP64.
+  `sizeof(struct rb_node)` is 64 bytes (one cache line on common
+  configurations) with all field offsets fixed via explicit padding;
+  `rb_color_t` is `uint8_t` (not an enum) so the storage size does not
+  drift with compiler flags such as `-fshort-enums`.
 - Value size is the user's choice per case, fixed at compile time.
   Different cases (different wrapper structs) can coexist in the same
   build — slab-like per-size pools.

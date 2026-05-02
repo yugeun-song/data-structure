@@ -7,17 +7,18 @@
 #define TRUE 1
 #define FALSE 0
 
-typedef enum {
-    RB_RED = 0,
-    RB_BLACK = 1
-} rb_color_t;
+typedef uint8_t rb_color_t;
+
+#define RB_RED   ((rb_color_t)0)
+#define RB_BLACK ((rb_color_t)1)
 
 struct rb_node {
-    struct rb_node *parent;
-    struct rb_node *l_child;
-    struct rb_node *r_child;
-    rb_color_t      color;
-    uint64_t        key;
+    struct rb_node *parent;          /* offset 0,  size 8 */
+    struct rb_node *l_child;         /* offset 8,  size 8 */
+    struct rb_node *r_child;         /* offset 16, size 8 */
+    uint64_t        key;             /* offset 24, size 8 */
+    rb_color_t      color;           /* offset 32, size 1 */
+    uint8_t         _pad[31];        /* offset 33, size 31 -> total 64 */
 };
 
 #define RB_NODE_DEFINE(name, value_size) \
